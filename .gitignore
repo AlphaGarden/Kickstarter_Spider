@@ -1,0 +1,10 @@
+# MacOS Files
+.DS_Store
+
+# python complie file
+*.pyc
+
+# IntelliJ Files
+.idea/
+*.iml
+.idea/*.xml
