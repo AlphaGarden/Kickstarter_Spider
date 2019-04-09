@@ -1,6 +1,7 @@
 import scrapy,json,time
 from scrapy.selector import Selector
 from ScrapyKickstarter.items import ProjectInfo
+from ScrapyKickstarter.globalvariables import *
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -24,26 +25,26 @@ class KickstarterSpider(scrapy.Spider):
         return 100 * float(part) / float(whole)
 
     def start_requests(self):
-        list = []
-        with open("/the/data/you/want/to/scrapy/[75_, 100_].json") as f:
+        with open(PROJECT_SOURCE_FILE, 'r') as f:
             projects = json.load(f)
             for project in projects:
-                list.append(project['ProjectLink'])
-        for url in list:
-            if url != "":
-                yield scrapy.Request(url=url, callback=self.parse)
+                if project['ProjectLink'] != "":
+                    projectInfo = ProjectInfo()
+                    projectInfo['ProjectId'] = project['ProjectId']
+                    yield scrapy.Request(url=project['ProjectLink'], callback=self.parse, meta= {'projectInfo': projectInfo})
+
 
     def parse(self, response):
-        projectInfo = ProjectInfo()
         sel = Selector(response)
+        projectInfo = response.meta['projectInfo']
         projectInfo['ProjectLink'] = response.url
         print(projectInfo['ProjectLink'])
 
-        # Project Champaign
+        # Project Campaign
         ti = len(sel.xpath('*//div[@class="template asset"]/figure/img'))
         images = sel.xpath('*//div[@class="template asset"]/figure/img/@src').extract()
 
-        # Format champaign text
+        # Format campaign text
         tmp = self.formatList(sel.xpath(
             '*//div[@class="full-description js-full-description responsive-media formatted-lists"]//text()').extract())
         des = [x for x in tmp if len(x) != 0]
