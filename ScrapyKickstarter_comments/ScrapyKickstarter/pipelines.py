@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
-from scrapy.exceptions import DropItem
+from ScrapyKickstarter.globalvariables import *
 
 # Define your item pipelines here
 #
@@ -14,7 +14,7 @@ class ScrapykickstarterPipeline(object):
     idx = 0
 
     def open_spider(self, spider):
-        self.file = open('/You/location/to/save/comments/[75_, 100_].json', 'w')
+        self.file = open(COMMENT_OUTPUT_PATH, 'w')
         self.file.write("[\n")
 
     def close_spider(self, spider):

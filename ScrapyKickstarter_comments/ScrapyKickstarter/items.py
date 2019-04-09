@@ -10,6 +10,7 @@ import scrapy
 
 class ProjectInfo(scrapy.Item):
     # define the fields for your item here like:
+    ProjectId = scrapy.Field()
     ProjectLink = scrapy.Field()
     totalComments = scrapy.Field()
     totalVCommentsSample = scrapy.Field()
