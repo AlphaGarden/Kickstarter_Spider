@@ -1,7 +1,10 @@
 import scrapy,json
 from scrapy.selector import Selector
 from scrapy.exceptions import CloseSpider
+from scrapy import signals
+from scrapy.mail import MailSender
 from DailyKickstarter.items import ProjectInfo
+import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -27,6 +30,23 @@ class DailystarterSpider(scrapy.Spider):
     def formatList(self, input):
         return map(str.strip, [x.encode('ascii', 'ignore').decode('ISO-8859-1').encode('utf-8') for x in input])
 
+    @classmethod
+    def from_crawler(cls, crawler, **kwargs):
+        spider = cls()
+        crawler.signals.connect(spider.spider_closed, signals.spider_closed)
+        return spider
+
+    def spider_closed(self, spider):
+        mail_from = 'mojiayong@gmail.com'
+        mail_to = ['jiayongm@asu.edu']
+        mail_cc = ['mojiayong@outlook.com']
+        mail_subject = "%s Daily Kickstarter crawling task is finished" % time.strftime("%Y-%m-%d")
+        mail_body = "%s task is finished" % time.strftime("%Y-%m-%d")
+
+        #TODO dump the report into the mail
+        mailer = MailSender(mailfrom= mail_from, smtpuser='mojiayong7@gmail.com',
+                            smtphost='smtp.gmail.com', smtpport=587, smtppass='', smtptls=True)
+        return mailer.send(to= mail_to, subject=mail_subject, body= mail_body, cc=mail_cc)
 
     def parse(self, response):
         self.page_number += 1

@@ -1,7 +1,5 @@
 import scrapy,json,time
-import urllib
 from scrapy.selector import Selector
-from scrapy.exceptions import CloseSpider
 from ScrapyKickstarter.items import ProjectInfo
 from selenium import webdriver
 from selenium.webdriver.common.by import By

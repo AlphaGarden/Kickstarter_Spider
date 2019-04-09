@@ -7,12 +7,11 @@
 import time
 import json
 
-
 class DailykickstarterPipeline(object):
     idx = 0
 
     def open_spider(self, spider):
-        self.file = open('/Your/Locaton/to/save/daily/' + str(time.strftime("%Y-%m-%d")) + '.json', 'w')
+        self.file = open('./' + str(time.strftime("%Y-%m-%d")) + '.json', 'w')
         self.file.write("[\n")
 
     def close_spider(self, spider):

@@ -4,7 +4,19 @@
 # python complie file
 *.pyc
 
+# output file
+*.json
+*.csv
+*.txt
+*.mp4
+
+# log file
+*.log
+
 # IntelliJ Files
 .idea/
 *.iml
 .idea/*.xml
+
+# python env
+venv

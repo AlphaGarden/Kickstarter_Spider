@@ -1,32 +1,34 @@
-import scrapy,json,time
+import scrapy, json, time
 import urllib
+import pandas as pd
+import re as regex
 from scrapy.selector import Selector
 from scrapy.exceptions import CloseSpider
 from ScrapyKickstarter.items import ProjectInfo
+from ScrapyKickstarter.globalvaribles import *
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-#Successful projects
+# Successful projects
 # URL = "https://www.kickstarter.com/discover/advanced?state=successful&category_id=12&woe_id=23424977&sort=popularity&seed=2572311&page=%d"
 
 # < 75%
 # URL = "https://www.kickstarter.com/discover/advanced?category_id=12&woe_id=23424977&raised=0&sort=popularity&seed=2572311&page=%d"
 
 # [75%, 100%]
-URL = "https://www.kickstarter.com/discover/advanced?category_id=12&woe_id=23424977&raised=1&sort=popularity&seed=2572311&page=%d"
-
-videoloc = "/Your/Location/to/save/video/"
 
 class KickstarterSpider(scrapy.Spider):
     name = "kickstarter"
     allowed_domains = ["kickstarter.com"]
-    start_urls = [URL % 1]
 
-    def __init__(self):
+    def __init__(self, **kwargs):
+        super(KickstarterSpider, self).__init__(**kwargs)
         self.popularity = 0
-        self.page_number = 0
+        self.page_number = 1
+        self.url_dict = {}
+        self.cancel_projects = []
 
     def formatStr(self, input):
         return str(input.encode('utf-8')).strip()
@@ -37,16 +39,36 @@ class KickstarterSpider(scrapy.Spider):
     def formatList(self, input):
         return map(str.strip, [x.encode('ascii', 'ignore').decode('ISO-8859-1').encode('utf-8') for x in input])
 
-    def percentage(part, whole):
-        return 100 * float(part) / float(whole)
+    def formatJSon(self, input):
+        return "{" + str(input.encode('utf-8'))[1: -1] + "}"
+
+    def formatPercentage(self, pledged, goal):
+        return float(pledged) / float(goal)
+
+    def new_project(self, projectJson):
+        projectInfo = ProjectInfo()
+        projectInfo["ProjectResults"] = {
+            "FundedOrNot": self.formatStr(projectJson['state']),
+            "AmountAsked": self.formatNum(projectJson['goal']),
+            "AmountPledged": self.formatNum(projectJson['pledged']),
+            "current_currency": self.formatStr(projectJson['current_currency']),
+            "totalBackers": self.formatNum(projectJson['backers_count']),
+            "goalFinishedPercentage": self.formatPercentage(projectJson['pledged'], projectJson['goal'])
+        }
+        projectInfo["ProjectId"] = str(projectJson['id'])
+        projectInfo["ProjectTitle"] = self.formatStr(projectJson['name']).replace("/", " ")
+        projectInfo["ProjectDescription"] = self.formatStr(projectJson['blurb'])
+        projectInfo["CreatedBy"] = self.formatStr(projectJson['creator']['name'])
+        projectInfo["ProjectLink"] = str(projectJson['urls']['web']['project'].encode('utf-8'))
+
+        return projectInfo
 
     def parse(self, response):
         self.page_number += 1
         print self.page_number
         print "----------"
         sel = Selector(response)
-        project = sel.xpath(
-            '//section[@id="projects"]/div[@class="grid-container"]/div[@class="js-project-group"]/div[contains(@class, "grid-row")]/div[contains(@class, "js-react-proj-card")]/@data-project').extract()
+        project = sel.xpath(DISCOVER_PROJECT_XPATH).extract()
         if not project:
             raise CloseSpider('No more pages')
 
@@ -55,67 +77,62 @@ class KickstarterSpider(scrapy.Spider):
             pStr = "{" + str(p.encode('utf-8'))[1: -1] + "}"
             projectJson = json.loads(pStr)
 
-            #check if the project is not live project
+            # check if the project is not live project
             if projectJson['state'] == "live":
                 continue
 
-            #check if the project is not successful
+            # check if the project is not successful
             if float(projectJson['pledged']) >= float(projectJson['goal']):
                 continue
 
-            projectInfo = ProjectInfo()
-            projectInfo["ProjectResults"] = {
-                "FundedOrNot": self.formatStr(projectJson['state']),
-                "AmountAsked": self.formatNum(projectJson['goal']),
-                "AmountPledged": self.formatNum(projectJson['pledged']),
-                "current_currency": self.formatStr(projectJson['current_currency']),
-                "totalBackers": self.formatNum(projectJson['backers_count']),
-                "goalFinishedPercentage": self.formatNum(projectJson['percent_funded'])
-            }
-
-            projectInfo["ProjectTitle"] = self.formatStr(projectJson['name']).replace("/", " ")
-            projectInfo["ProjectDescription"] = self.formatStr(projectJson['blurb'])
-            projectInfo["CreatedBy"] = self.formatStr(projectJson['creator']['name'])
-
-            project_url = str(projectJson['urls']['web']['project'].encode('utf-8'))
-
-            projectInfo["ProjectLink"] = project_url
+            projectInfo = self.new_project(projectJson)
 
             self.popularity += 1
 
-            request = scrapy.Request(project_url, callback=self.parse_project_detail)
+            request = scrapy.Request(url= projectInfo[PROJECT_LINK], callback=self.parse_project_detail)
             request.meta["projectInfo"] = projectInfo
             yield request
 
-            curPage = response.request.url[response.request.url.index("page=")+5:]
-            projectInfo["popularity"] = 12*(int(curPage) - 1) + self.popularity
+            curPage = response.request.url[response.request.url.index("page=") + 5:]
+            projectInfo["popularity"] = 12 * (int(curPage) - 1) + self.popularity
 
         yield scrapy.Request(URL % self.page_number)
 
+    def parse_project_from_link(self, response):
+        projectText = response.selector.xpath(SCRIPT_PROJECT_XPATH).get().replace("\\\\&quot;", '\\"').replace("&quot;", "\"")
+        projectJsonStr = self.formatJSon(regex.search("(window\.current_project = \")(.*)\"", projectText).group(2))
+        projectInfo = self.new_project(json.loads(projectJsonStr))
+        self.download_video(projectInfo, DEFAULT_VIDEO_LOC)
+        response.meta['projectInfo'] = projectInfo
+        return self.parse_project_detail(response)
 
-
-    # supports, champaign,
+    # supports, campaign,
     def parse_project_detail(self, response):
         projectInfo = response.meta['projectInfo']
         sel = Selector(response)
 
+        project_state = projectInfo['ProjectResults']['FundedOrNot'].lower()
+
         # Project Supports
         allLevels = []
-        levelbase = '//div[@class="NS_projects__rewards_list js-project-rewards"]/ol/li[@class="hover-group pledge--inactive pledge-selectable-sidebar"]'
+        if project_state == LIVE_STATE:
+            levelbase = '//div[@class="NS_projects__rewards_list js-project-rewards"]/ol/li[@class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]'
+        elif project_state == SUCCESSFUL_STATE or project_state == UNSUCCESSFUL_STATE:
+            levelbase = '//div[@class="NS_projects__rewards_list js-project-rewards"]/ol/li[@class="hover-group pledge--inactive pledge-selectable-sidebar"]'
+        else:
+            print "unknown level name %s" % project_state
+
         levelname = sel.xpath(levelbase + '/div[@class="pledge__info"]/h2/span[@class="money"]/text()').extract()
         levelTitle = sel.xpath(levelbase + '/div[@class="pledge__info"]/h3/text()').extract()
         pledgeRewardDescription = sel.xpath(levelbase + '/div[@class="pledge__info"]'
-                                                      '/div[@class="pledge__reward-description pledge__reward-description--expanded"]'
-                                                      '/p/text()').extract()
+                                                        '/div[@class="pledge__reward-description pledge__reward-description--expanded"]'
+                                                        '/p/text()').extract()
         pledgeEstimateDelivery = sel.xpath(levelbase +
                                            '/div[@class="pledge__info"]/div[@class="pledge__extra-info"]'
                                            '/div[@class="pledge__detail"]/span[@class="pledge__detail-info"]/time/text()').extract()
-
-        pledgeTotalBackers = sel.xpath(levelbase + '/div[@class="pledge__info"]/div[@class="pledge__backer-stats"]/'
-                                                 'span/text()').extract()
+        pledgeTotalBackers = sel.xpath(levelbase + '/div[@class="pledge__info"]/div[@class="pledge__backer-stats"]'
+                                                   '/span/text()').extract()
         totalCount = int(len(sel.xpath(levelbase)))
-
-
         if totalCount > 0:
             for i in range(0, totalCount):
                 pl = "null" if i >= len(levelname) else self.formatStr(levelname[i])
@@ -142,22 +159,21 @@ class KickstarterSpider(scrapy.Spider):
             "RewardsOfEachLevels": allLevels
         }
 
-        # Project Champaign
+        # Project Campaign
         ti = len(sel.xpath('*//div[@class="template asset"]/figure/img'))
 
-        # Format champaign text
+        # Format campaign text
         tmp = self.formatList(sel.xpath(
             '*//div[@class="full-description js-full-description responsive-media formatted-lists"]//text()').extract())
         des = [x for x in tmp if len(x) != 0]
 
-
         # Project timeline
-        projectInfo['ProjectTimeLine'] = self.formatList(sel.xpath('//div[@class="NS_campaigns__funding_period"]/p/time/@datetime').extract())
+        projectInfo['ProjectTimeLine'] = self.formatList(
+            sel.xpath('//div[@class="NS_campaigns__funding_period"]/p/time/@datetime').extract())
         projectInfo['ProjectSupports'] = json.dumps(supports)
-        projectInfo['ProjectChampaign'] = des
-        projectInfo['TotalChampaignImage'] = ti
+        projectInfo['ProjectCampaign'] = des
+        projectInfo['TotalCampaignImage'] = ti
         projectInfo['totalComments'] = sel.xpath('//span[@class="count"]/data/@data-value').extract()[0]
-
 
         # Check Video
         # video = sel.css("video").xpath('//source/@src').extract()
@@ -167,7 +183,7 @@ class KickstarterSpider(scrapy.Spider):
         request.meta["projectInfo"] = projectInfo
         return request
 
-    #timelime, updates between each timelime
+    # timelime, updates between each timelime
     def parse_project_update(self, response):
         projectInfo = response.meta['projectInfo']
         sel = Selector(response)
@@ -197,7 +213,48 @@ class KickstarterSpider(scrapy.Spider):
 
         return request
 
+    def download_video(self, projectInfo, save_to):
+        # Video on title or description and need click
+        driver = webdriver.Firefox()
+        driver.get(projectInfo['ProjectLink'])
+        wait = WebDriverWait(driver, 5)
 
+        wait.until(EC.presence_of_element_located(
+                    (By.XPATH, '//div[@class="NS_projects__description_section"]')))
+
+        project_state = projectInfo['ProjectResults']['FundedOrNot'].lower()
+
+        # find out the click button to load video source
+        if project_state == LIVE_STATE or project_state == UNSUCCESSFUL_STATE:
+            play_button_xpath = "//button[contains(@class,'m-auto w20p h20p w15p-md h15p-md p1 p2-md bg-green-700 border border-white border-medium')]"
+            video_source_xpath = "*//video[contains(@class, 'aspect-ratio--object z1')]//source"
+        elif project_state == SUCCESSFUL_STATE:
+            play_button_xpath = "//div[@id='video_pitch']/div[contains(@class, 'play_button_container')]/button"
+            video_source_xpath = "//div[@id='video_pitch']/video[contains(@class, 'has_hls landscape')]//source"
+
+        # video click and download
+        videoClick = driver.find_elements(By.XPATH, play_button_xpath)
+        # CampaignVideo
+        # CampaignVideoLink
+        if videoClick:
+            videoClick[0].click()
+            time.sleep(0.3)
+            video = driver.find_elements(By.XPATH, video_source_xpath)
+            if len(video) >= 2:
+                url = video[1].get_property('src')
+                projectInfo['CampaignVideo'] = "True"
+                projectInfo['CampaignVideoLink'] = url
+
+                name = projectInfo["ProjectTitle"]
+                name = save_to + name + ".mp4"
+
+                print("Downloading %s starts...\n" % name)
+                urllib.urlretrieve(url, name)
+                print("Download %s completed..!!" % name)
+        else:
+            projectInfo['CampaignVideo'] = "False"
+            projectInfo['CampaignVideoLink'] = "No Link"
+        driver.quit()
 
     def parse_project_comments(self, response):
         projectInfo = response.meta['projectInfo']
@@ -208,21 +265,8 @@ class KickstarterSpider(scrapy.Spider):
         count = 0
 
         items = []
-        video = []
-
-        # Video on title and need click
 
         try:
-            # video click and download
-            videoClick = driver.find_elements(By.XPATH,
-                                              "//button[contains(@class,'m-auto w20p h20p w15p-md h15p-md p1 p2-md bg-green-700 border border-white border-medium')]")
-            # ChampaignVideo
-            # ChampaignVideoLink
-            if videoClick:
-                videoClick[0].click()
-                time.sleep(0.3)
-                video = driver.find_elements(By.XPATH,
-                                             "*//video[contains(@class, 'aspect-ratio--object z1')]//source")
 
             # load comments section
             wait.until(
@@ -232,10 +276,9 @@ class KickstarterSpider(scrapy.Spider):
             # automate click operations to load all comments
             while click_more and len(items) < 1000:
                 time.sleep(0.5)
-                loadmore = driver.find_element_by_id('react-project-comments').find_elements(By.XPATH,
-                                                                                                 "//button[contains(@class,'bttn')]")
+                loadmore = driver.find_elements(By.XPATH, "//button[contains(@class,'bttn') and span='Load more']")
                 items = driver.find_elements(By.XPATH,
-                                                 '*//ul[@class="bg-grey-100 border border-grey-400 p2 mb3"]//div[@class="flex mb3"]')
+                                             '*//ul[@class="bg-grey-100 border border-grey-400 p2 mb3"]//div[@class="flex mb3"]')
                 if loadmore:
                     loadmore[0].click()
                 else:
@@ -252,28 +295,10 @@ class KickstarterSpider(scrapy.Spider):
         except Exception as e:
             projectInfo['totalVCommentsSample'] = "no comments"
             projectInfo['totalVCommentsPercent'] = "no percent"
-            projectInfo['ChampaignVideo'] = "False"
-            projectInfo['ChampaignVideoLink'] = "No Link"
             print(e)
             return projectInfo
 
         else:
-            if len(video) >= 2:
-                url = video[1].get_property('src')
-                projectInfo['ChampaignVideo'] = "True"
-                projectInfo['ChampaignVideoLink'] = url
-
-                name = projectInfo["ProjectTitle"]
-                name = videoloc + name + ".mp4"
-
-                print("Downloading starts...\n")
-                urllib.urlretrieve(url, name)
-                print("Download completed..!!")
-
-            else:
-                projectInfo['ChampaignVideo'] = "False"
-                projectInfo['ChampaignVideoLink'] = "No Link"
-
             projectInfo['totalVCommentsSample'] = len(items) - count
             if len(items) == 0:
                 projectInfo['totalVCommentsPercent'] = 0
@@ -284,12 +309,49 @@ class KickstarterSpider(scrapy.Spider):
         finally:
             driver.quit()
 
+    def search_unknown_urls(self, response):
+        """
+        fill the unknown url for the given csv file
+        :param project_name:
+        :return:
+        """
+        project_title = response.meta['project_title']
+        project = response.selector.xpath(DISCOVER_PROJECT_XPATH).getall()
+        if len(project) > 0:
+            for p in project:
+                project_json = json.loads(self.formatJSon(p))
+                extracted_name = self.formatStr(project_json['name'])
+                if project_title != extracted_name:
+                    if 'cancel' in extracted_name.lower():
+                        self.cancel_projects.append(extracted_name)
+                    print 'Unmatched search result for source [%s] and result [%s], SKIP' % (project_title, extracted_name)
+                else:
+                    project_url = str(project_json['urls']['web']['project'].encode('utf-8'))
+                    self.url_dict[project_title] = project_url
+                    break
+        else:
+            print "%s has been removed from kickstarter. SKIP" % project_title
 
+    def start_requests(self):
+        if self.mode == 'iterate':
+            yield scrapy.Request(url=URL % 1, callback=self.parse)
+        elif self.mode == 'search':
+            print "Initiate searching for the project csv file"
+            projects_df = pd.read_csv(PROJECT_CSV_PATH, thousands=',')
+            for index, row in projects_df.iterrows():
+                yield scrapy.Request(SEARCH_BASE_URL % row['ProjectTitle'], callback=self.search_unknown_urls,
+                                     meta={'project_title': row['ProjectTitle']})
+            with open(FILE_BASE + '/urls.json', 'w') as fp:
+                print "search links result is %d/%d"%(len(self.url_dict.keys()), projects_df.shape[0])
+                fp.write(json.dumps(self.url_dict))
+                fp.close()
+            print "The length of cancel projects" + str(len(self.cancel_projects))
+            print self.cancel_projects
 
-
-
-
-
-
-
-
+        elif self.mode == 'from_file':
+            with open(URLS_FILE_PATH, 'r') as json_file:
+                data = dict(json.load(json_file))
+                for url in data.values():
+                    yield scrapy.Request(url, callback= self.parse_project_from_link)
+        else:
+            print 'unknown running mode, now support iterate and search mode'

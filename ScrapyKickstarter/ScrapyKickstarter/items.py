@@ -10,6 +10,7 @@ import scrapy
 
 class ProjectInfo(scrapy.Item):
     # define the fields for your item here like:
+    ProjectId = scrapy.Field()
     ProjectTitle = scrapy.Field()
     ProjectDescription = scrapy.Field()
     CreatedBy = scrapy.Field()
@@ -22,7 +23,7 @@ class ProjectInfo(scrapy.Item):
     totalVCommentsPercent = scrapy.Field()
     ProjectResults = scrapy.Field()
     ProjectSupports = scrapy.Field()
-    ProjectChampaign = scrapy.Field()
-    TotalChampaignImage = scrapy.Field()
-    ChampaignVideo = scrapy.Field()
-    ChampaignVideoLink = scrapy.Field()
+    ProjectCampaign = scrapy.Field()
+    TotalCampaignImage = scrapy.Field()
+    CampaignVideo = scrapy.Field()
+    CampaignVideoLink = scrapy.Field()
