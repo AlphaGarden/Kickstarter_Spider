@@ -217,7 +217,7 @@ class KickstarterSpider(scrapy.Spider):
         # Video on title or description and need click
         driver = webdriver.Firefox()
         driver.get(projectInfo['ProjectLink'])
-        wait = WebDriverWait(driver, 5)
+        wait = WebDriverWait(driver, 20)
 
         wait.until(EC.presence_of_element_located(
                     (By.XPATH, '//div[@class="NS_projects__description_section"]')))
@@ -245,8 +245,7 @@ class KickstarterSpider(scrapy.Spider):
                 projectInfo['CampaignVideo'] = "True"
                 projectInfo['CampaignVideoLink'] = url
 
-                name = projectInfo["ProjectTitle"]
-                name = save_to + name + ".mp4"
+                name = save_to + projectInfo["ProjectId"] + ".mp4"
 
                 print("Downloading %s starts...\n" % name)
                 urllib.urlretrieve(url, name)
