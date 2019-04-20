@@ -4,13 +4,14 @@ from scrapy.exceptions import CloseSpider
 from scrapy import signals
 from scrapy.mail import MailSender
 from DailyKickstarter.items import ProjectInfo
+from DailyKickstarter.static import *
 import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-URL = "https://www.kickstarter.com/discover/advanced?state=live&category_id=12&woe_id=23424977&sort=popularity&seed=2572311&page=%d"
+
 
 class DailystarterSpider(scrapy.Spider):
     name = "dailykickstarter"
@@ -37,16 +38,15 @@ class DailystarterSpider(scrapy.Spider):
         return spider
 
     def spider_closed(self, spider):
-        mail_from = 'mojiayong@gmail.com'
+        mail_from = 'mojiayong7@gmail.com'
         mail_to = ['jiayongm@asu.edu']
-        mail_cc = ['mojiayong@outlook.com']
         mail_subject = "%s Daily Kickstarter crawling task is finished" % time.strftime("%Y-%m-%d")
         mail_body = "%s task is finished" % time.strftime("%Y-%m-%d")
 
         #TODO dump the report into the mail
         mailer = MailSender(mailfrom= mail_from, smtpuser='mojiayong7@gmail.com',
                             smtphost='smtp.gmail.com', smtpport=587, smtppass='', smtptls=True)
-        return mailer.send(to= mail_to, subject=mail_subject, body= mail_body, cc=mail_cc)
+        return mailer.send(to= mail_to, subject=mail_subject, body= mail_body)
 
     def parse(self, response):
         self.page_number += 1
@@ -97,19 +97,19 @@ class DailystarterSpider(scrapy.Spider):
 
         driver = webdriver.Firefox()
         driver.get(response.request.url)
-        wait = WebDriverWait(driver, 5)
+        wait = WebDriverWait(driver, 10)
 
         try:
             wait.until(
                 EC.presence_of_element_located(
-                    (By.XPATH, '//div[@class="ml5 ml0-lg"]/div/span[@class="block type-16 type-24-md medium soft-black"]'))
+                    (By.XPATH, TIME_TO_GO_XPATH))
             )
 
-            items = driver.find_elements(By.XPATH, '//div[@class="ml5 ml0-lg"]/div/span[@class="block type-16 type-24-md medium soft-black"]')
+            items = driver.find_elements(By.XPATH, TIME_TO_GO_XPATH)
             text = items[0].text
 
         except Exception as e:
-            print(e)
+            print("Error %s") % e
             projectInfo['TimeToGo'] = 0
 
         else:
