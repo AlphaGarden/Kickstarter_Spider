@@ -11,7 +11,7 @@ class DailykickstarterPipeline(object):
     idx = 0
 
     def open_spider(self, spider):
-        self.file = open('./' + str(time.strftime("%Y-%m-%d")) + '.json', 'w')
+        self.file = open('./daily' + str(time.strftime("%Y-%m-%d")) + '.json', 'w')
         self.file.write("[\n")
 
     def close_spider(self, spider):
