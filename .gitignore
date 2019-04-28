@@ -4,6 +4,9 @@
 # python complie file
 *.pyc
 
+# env bootstrap
+*/bootstrap.ini
+
 # output file
 *.json
 *.csv

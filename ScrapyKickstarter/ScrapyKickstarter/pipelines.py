@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
-from globalvaribles import PROJECT_INFO_PATH
+from utils import FilepathLoader
 from scrapy.exceptions import DropItem
 
 # Define your item pipelines here
@@ -15,7 +15,7 @@ class ScrapykickstarterPipeline(object):
     idx = 0
 
     def open_spider(self, spider):
-        self.file = open(PROJECT_INFO_PATH, 'w')
+        self.file = open(FilepathLoader().get_project_info_path(), 'w')
         self.file.write("[\n")
 
     def close_spider(self, spider):

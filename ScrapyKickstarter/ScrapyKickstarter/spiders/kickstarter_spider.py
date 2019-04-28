@@ -2,14 +2,18 @@ import scrapy, json, time
 import urllib
 import pandas as pd
 import re as regex
+import datetime as dt
+import logging
+from scrapy.utils.log import configure_logging
 from scrapy.selector import Selector
 from scrapy.exceptions import CloseSpider
 from ScrapyKickstarter.items import ProjectInfo
-from ScrapyKickstarter.globalvaribles import *
+from ScrapyKickstarter.utils import *
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
 
 # Successful projects
 # URL = "https://www.kickstarter.com/discover/advanced?state=successful&category_id=12&woe_id=23424977&sort=popularity&seed=2572311&page=%d"
@@ -18,10 +22,17 @@ from selenium.webdriver.support import expected_conditions as EC
 # URL = "https://www.kickstarter.com/discover/advanced?category_id=12&woe_id=23424977&raised=0&sort=popularity&seed=2572311&page=%d"
 
 # [75%, 100%]
-
 class KickstarterSpider(scrapy.Spider):
     name = "kickstarter"
     allowed_domains = ["kickstarter.com"]
+
+    configure_logging(install_root_handler=False)
+    logging.basicConfig(
+        filename=dt.datetime.now().strftime("%Y-%m-%d") + ".log",
+        filemode='w',
+        format='%(levelname)s: %(message)s',
+        level=logging.DEBUG
+    )
 
     def __init__(self, **kwargs):
         super(KickstarterSpider, self).__init__(**kwargs)
@@ -29,6 +40,7 @@ class KickstarterSpider(scrapy.Spider):
         self.page_number = 1
         self.url_dict = {}
         self.cancel_projects = []
+        self.path_loader = FilepathLoader()
 
     def formatStr(self, input):
         return str(input.encode('utf-8')).strip()
@@ -65,8 +77,7 @@ class KickstarterSpider(scrapy.Spider):
 
     def parse(self, response):
         self.page_number += 1
-        print self.page_number
-        print "----------"
+        logging.info("Parse page on page number %d", self.page_number)
         sel = Selector(response)
         project = sel.xpath(DISCOVER_PROJECT_XPATH).extract()
         if not project:
@@ -89,7 +100,7 @@ class KickstarterSpider(scrapy.Spider):
 
             self.popularity += 1
 
-            request = scrapy.Request(url= projectInfo[PROJECT_LINK], callback=self.parse_project_detail)
+            request = scrapy.Request(url=projectInfo[PROJECT_LINK], callback=self.parse_project_detail)
             request.meta["projectInfo"] = projectInfo
             yield request
 
@@ -99,10 +110,12 @@ class KickstarterSpider(scrapy.Spider):
         yield scrapy.Request(URL % self.page_number)
 
     def parse_project_from_link(self, response):
-        projectText = response.selector.xpath(SCRIPT_PROJECT_XPATH).get().replace("\\\\&quot;", '\\"').replace("&quot;", "\"")
+        logging.info('Parse function called on %s', response.url)
+        projectText = response.selector.xpath(SCRIPT_PROJECT_XPATH).get().replace("\\\\&quot;", '\\"').replace("&quot;",
+                                                                                                               "\"")
         projectJsonStr = self.formatJSon(regex.search("(window\.current_project = \")(.*)\"", projectText).group(2))
         projectInfo = self.new_project(json.loads(projectJsonStr))
-        self.download_video(projectInfo, DEFAULT_VIDEO_LOC)
+        self.download_video(projectInfo, self.path_loader.get_default_video_loc())
         response.meta['projectInfo'] = projectInfo
         return self.parse_project_detail(response)
 
@@ -117,10 +130,10 @@ class KickstarterSpider(scrapy.Spider):
         allLevels = []
         if project_state == LIVE_STATE:
             levelbase = '//div[@class="NS_projects__rewards_list js-project-rewards"]/ol/li[@class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]'
-        elif project_state == SUCCESSFUL_STATE or project_state == UNSUCCESSFUL_STATE:
+        elif project_state == SUCCESSFUL_STATE or project_state == UNSUCCESSFUL_STATE or project_state == CANCELED:
             levelbase = '//div[@class="NS_projects__rewards_list js-project-rewards"]/ol/li[@class="hover-group pledge--inactive pledge-selectable-sidebar"]'
         else:
-            print "unknown level name %s" % project_state
+            logging.error('unknown level name %s', project_state)
 
         levelname = sel.xpath(levelbase + '/div[@class="pledge__info"]/h2/span[@class="money"]/text()').extract()
         levelTitle = sel.xpath(levelbase + '/div[@class="pledge__info"]/h3/text()').extract()
@@ -220,17 +233,19 @@ class KickstarterSpider(scrapy.Spider):
         wait = WebDriverWait(driver, 20)
 
         wait.until(EC.presence_of_element_located(
-                    (By.XPATH, '//div[@class="NS_projects__description_section"]')))
+            (By.XPATH, '//div[@class="NS_projects__description_section"]')))
 
         project_state = projectInfo['ProjectResults']['FundedOrNot'].lower()
 
         # find out the click button to load video source
-        if project_state == LIVE_STATE or project_state == UNSUCCESSFUL_STATE:
+        if project_state == LIVE_STATE or project_state == UNSUCCESSFUL_STATE or project_state == CANCELED:
             play_button_xpath = "//button[contains(@class,'m-auto w20p h20p w15p-md h15p-md p1 p2-md bg-green-700 border border-white border-medium')]"
             video_source_xpath = "*//video[contains(@class, 'aspect-ratio--object z1')]//source"
         elif project_state == SUCCESSFUL_STATE:
             play_button_xpath = "//div[@id='video_pitch']/div[contains(@class, 'play_button_container')]/button"
             video_source_xpath = "//div[@id='video_pitch']/video[contains(@class, 'has_hls landscape')]//source"
+        else:
+            logging.error("unknown project state %s", project_state)
 
         # video click and download
         videoClick = driver.find_elements(By.XPATH, play_button_xpath)
@@ -247,9 +262,9 @@ class KickstarterSpider(scrapy.Spider):
 
                 name = save_to + projectInfo["ProjectId"] + ".mp4"
 
-                print("Downloading %s starts...\n" % name)
+                logging.info('Downloading %s starts...', name)
                 urllib.urlretrieve(url, name)
-                print("Download %s completed..!!" % name)
+                logging.info('Download %s completed..!!', name)
         else:
             projectInfo['CampaignVideo'] = "False"
             projectInfo['CampaignVideoLink'] = "No Link"
@@ -259,7 +274,7 @@ class KickstarterSpider(scrapy.Spider):
         projectInfo = response.meta['projectInfo']
         driver = webdriver.Firefox()
         driver.get(response.request.url)
-        wait = WebDriverWait(driver, 5)
+        wait = WebDriverWait(driver, 10)
         click_more = True
         count = 0
 
@@ -294,7 +309,7 @@ class KickstarterSpider(scrapy.Spider):
         except Exception as e:
             projectInfo['totalVCommentsSample'] = "no comments"
             projectInfo['totalVCommentsPercent'] = "no percent"
-            print(e)
+            logging.warn("Empty comment for project: %s", projectInfo['ProjectTitle'])
             return projectInfo
 
         else:
@@ -302,7 +317,8 @@ class KickstarterSpider(scrapy.Spider):
             if len(items) == 0:
                 projectInfo['totalVCommentsPercent'] = 0
             else:
-                projectInfo['totalVCommentsPercent'] = 100 * float(projectInfo['totalVCommentsSample']) / float(len(items))
+                projectInfo['totalVCommentsPercent'] = 100 * float(projectInfo['totalVCommentsSample']) / float(
+                    len(items))
             return projectInfo
 
         finally:
@@ -323,34 +339,35 @@ class KickstarterSpider(scrapy.Spider):
                 if project_title != extracted_name:
                     if 'cancel' in extracted_name.lower():
                         self.cancel_projects.append(extracted_name)
-                    print 'Unmatched search result for source [%s] and result [%s], SKIP' % (project_title, extracted_name)
+                    logging.warn('Unmatched search result for source [%s] and result [%s], SKIP', project_title,
+                                 extracted_name)
                 else:
                     project_url = str(project_json['urls']['web']['project'].encode('utf-8'))
                     self.url_dict[project_title] = project_url
                     break
         else:
-            print "%s has been removed from kickstarter. SKIP" % project_title
+            logging.warn('%s has been removed from kickstarter SKIP', project_title)
 
     def start_requests(self):
         if self.mode == 'iterate':
             yield scrapy.Request(url=URL % 1, callback=self.parse)
         elif self.mode == 'search':
-            print "Initiate searching for the project csv file"
+            logging.info('Initiate searching for the project csv file')
             projects_df = pd.read_csv(PROJECT_CSV_PATH, thousands=',')
             for index, row in projects_df.iterrows():
                 yield scrapy.Request(SEARCH_BASE_URL % row['ProjectTitle'], callback=self.search_unknown_urls,
                                      meta={'project_title': row['ProjectTitle']})
-            with open(FILE_BASE + '/urls.json', 'w') as fp:
-                print "search links result is %d/%d"%(len(self.url_dict.keys()), projects_df.shape[0])
+            with open(self.path_loader.get_urls_file_path(), 'w') as fp:
+                logging.info('search links result is %d/%d', len(self.url_dict.keys()), projects_df.shape[0])
                 fp.write(json.dumps(self.url_dict))
                 fp.close()
-            print "The length of cancel projects" + str(len(self.cancel_projects))
-            print self.cancel_projects
+            logging.info('The length of cancel projects: %d', len(self.cancel_projects))
+            logging.debug(self.cancel_projects)
 
         elif self.mode == 'from_file':
-            with open(URLS_FILE_PATH, 'r') as json_file:
+            with open(self.path_loader.get_urls_file_path(), 'r') as json_file:
                 data = dict(json.load(json_file))
                 for url in data.values():
-                    yield scrapy.Request(url, callback= self.parse_project_from_link)
+                    yield scrapy.Request(url, callback=self.parse_project_from_link)
         else:
-            print 'unknown running mode, now support iterate and search mode'
+            logging.error('unknown running mode, now support iterate and search mode')
