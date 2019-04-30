@@ -57,6 +57,7 @@ class DailystarterSpider(scrapy.Spider):
 
             projectInfo = ProjectInfo()
             projectInfo["ProjectTitle"] = self.formatStr(projectJson['name'])
+            projectInfo["ProjectId"] = str(projectJson['id'])
             projectInfo["ProjectDescription"] = self.formatStr(projectJson['blurb'])
             projectInfo["CreatedBy"] = self.formatStr(projectJson['creator']['name'])
 

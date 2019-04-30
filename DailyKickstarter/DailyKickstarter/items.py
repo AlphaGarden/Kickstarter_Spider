@@ -11,6 +11,7 @@ import scrapy
 class ProjectInfo(scrapy.Item):
     # define the fields for your item here like:
     ProjectTitle = scrapy.Field()
+    ProjectId = scrapy.Field()
     ProjectDescription = scrapy.Field()
     CreatedBy = scrapy.Field()
     ProjectLink = scrapy.Field()
