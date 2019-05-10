@@ -43,13 +43,13 @@ class KickstarterSpider(scrapy.Spider):
         self.path_loader = FilepathLoader()
 
     def formatStr(self, input):
-        return str(input.encode('utf-8')).strip()
+        return regex.sub(r'[^\x00-\x7F]+', ' ', str(input.encode('utf-8')).strip())
 
     def formatNum(self, input):
         return str(input).strip()
 
     def formatList(self, input):
-        return map(str.strip, [x.encode('ascii', 'ignore').decode('ISO-8859-1').encode('utf-8') for x in input])
+        return [regex.sub(r'[^\x00-\x7F]+', ' ', text) for text in input]
 
     def formatJSon(self, input):
         return "{" + str(input.encode('utf-8'))[1: -1] + "}"
@@ -114,10 +114,27 @@ class KickstarterSpider(scrapy.Spider):
         projectText = response.selector.xpath(SCRIPT_PROJECT_XPATH).get().replace("\\\\&quot;", '\\"').replace("&quot;",
                                                                                                                "\"")
         projectJsonStr = self.formatJSon(regex.search("(window\.current_project = \")(.*)\"", projectText).group(2))
-        projectInfo = self.new_project(json.loads(projectJsonStr))
-        self.download_video(projectInfo, self.path_loader.get_default_video_loc())
+        rawProjectJson = json.loads(projectJsonStr)
+        projectInfo = self.new_project(rawProjectJson)
+        if (self.video == 'on'):
+            self.download_video(projectInfo, self.path_loader.get_default_video_loc())
         response.meta['projectInfo'] = projectInfo
-        return self.parse_project_detail(response)
+        self.parse_project_detail(response)
+        request = scrapy.Request(url=rawProjectJson['creator']['urls']['api']['user'], callback=self.parse_creator_profile)
+        request.meta['projectInfo'] = projectInfo
+        return request
+
+    def parse_creator_profile(self, response):
+        projectInfo = response.meta['projectInfo']
+        creatorProfile = json.loads(response.text)
+        projectInfo['CreatorProfile'] = {
+            'Description': creatorProfile['biography'],
+            'BackedProjectsCount': creatorProfile['backed_projects_count'],
+            'CreatedProjectsCount': creatorProfile['created_projects_count']
+        }
+        request = scrapy.Request(url= projectInfo['ProjectLink'] + '/updates', callback=self.parse_project_update)
+        request.meta["projectInfo"] = projectInfo
+        return request
 
     # supports, campaign,
     def parse_project_detail(self, response):
@@ -187,14 +204,6 @@ class KickstarterSpider(scrapy.Spider):
         projectInfo['ProjectCampaign'] = des
         projectInfo['TotalCampaignImage'] = ti
         projectInfo['totalComments'] = sel.xpath('//span[@class="count"]/data/@data-value').extract()[0]
-
-        # Check Video
-        # video = sel.css("video").xpath('//source/@src').extract()
-
-        project_url_update = response.request.url + '/updates'
-        request = scrapy.Request(project_url_update, callback=self.parse_project_update)
-        request.meta["projectInfo"] = projectInfo
-        return request
 
     # timelime, updates between each timelime
     def parse_project_update(self, response):

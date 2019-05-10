@@ -14,6 +14,7 @@ class ProjectInfo(scrapy.Item):
     ProjectTitle = scrapy.Field()
     ProjectDescription = scrapy.Field()
     CreatedBy = scrapy.Field()
+    CreatorProfile = scrapy.Field()
     popularity = scrapy.Field()
     ProjectLink = scrapy.Field()
     ProjectTimeLine = scrapy.Field()

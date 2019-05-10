@@ -7,7 +7,7 @@ URL = "https://www.kickstarter.com/discover/advanced?category_id=12&woe_id=23424
 DISCOVER_PROJECT_XPATH = '//section[@id="projects"]/div[@class="grid-container"]/div[@class="js-project-group"]/div[contains(@class, "grid-row")]/div[contains(@class, "js-react-proj-card")]/@data-project'
 URL_PROJECT_XPATH = '//div[@id="react-project-header"]/@data-initial'
 PROJECT_STATE_XPATH = '//div[@class="NS_projects__content pt11"]/section/@data-project-state'
-SCRIPT_PROJECT_XPATH = '//script[contains(text(), "window.current_project")]/text()';
+SCRIPT_PROJECT_XPATH = '//script[contains(text(), "window.current_project")]/text()'
 
 # FILE_PATH
 PROJECT_CSV_PATH = './projectDaily.csv'
