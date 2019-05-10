@@ -10,6 +10,7 @@
 # output file
 *.json
 *.csv
+*.xlsx
 *.txt
 *.mp4
 
