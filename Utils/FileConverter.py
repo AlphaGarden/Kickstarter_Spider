@@ -22,11 +22,21 @@ def generateCreatorCSV(projectInfo):
             tmp.append(item['CreatorProfile'][k])
         tmp.append(formatString(item['CreatorProfile'][keys[len(keys) - 1]]))
         output_data.append(tmp)
-    pd.DataFrame(output_data).to_excel('creator.xlsx', header= keys, index= False)
+    pd.DataFrame(output_data).to_excel('creator.xlsx', header=keys, index=False)
+
+def convert2urls():
+    df = pd.read_csv('projects.csv', thousands=',', encoding= 'ISO-8859-1')
+    urls = {}
+    for i, link in enumerate(df['ProjectLink'].values):
+        urls[i] = link
+    with open('urls.json', 'w') as fp:
+        json.dump(urls, fp)
+        fp.close()
 
 if __name__ == '__main__':
-    project_info_path = 'projectInfo.json'
-    generateCreatorCSV(load_json(project_info_path))
+    # convert2urls()
+    # project_info_path = 'projectInfo.json'
+    generateCreatorCSV(load_json("/Users/garden/Downloads/projectInfo.json"))
 
 
 

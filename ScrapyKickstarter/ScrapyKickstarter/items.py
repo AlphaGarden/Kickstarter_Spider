@@ -26,5 +26,6 @@ class ProjectInfo(scrapy.Item):
     ProjectSupports = scrapy.Field()
     ProjectCampaign = scrapy.Field()
     TotalCampaignImage = scrapy.Field()
+    CampaignImages = scrapy.Field()
     CampaignVideo = scrapy.Field()
     CampaignVideoLink = scrapy.Field()

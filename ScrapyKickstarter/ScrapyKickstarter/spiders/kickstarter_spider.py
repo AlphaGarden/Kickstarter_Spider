@@ -190,7 +190,9 @@ class KickstarterSpider(scrapy.Spider):
         }
 
         # Project Campaign
-        ti = len(sel.xpath('*//div[@class="template asset"]/figure/img'))
+        images = sel.xpath('*//div[@class="template asset"]/figure/img/@src').extract()
+        projectInfo['CampaignImages'] = images
+        ti = len(images)
 
         # Format campaign text
         tmp = self.formatList(sel.xpath(
