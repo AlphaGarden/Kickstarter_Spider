@@ -10,3 +10,20 @@ do scrapy crawl dailykickstarter;
 sleep 24h;
 done
 ```
+
+#### How to spawn Video Kickstarter spider
+
+Step 1: prepare the urls json file in advance by following the format of a dictionary in python
+
+Step 2: place the file `urls.json` into the location `D:/kickstarter`.
+
+Step 3: create a new folder called `video` under the location `D:/kickstarter`
+
+Step 4: Go to the `<your path>/Kickstarter_Spider/ScrapyKickstarter/`
+
+If you want to collect the video, set the `video` parameter as `on`
+
+``` bash
+crawl kickstarter -a mode=from_file -a video=[off/on]
+```
+
